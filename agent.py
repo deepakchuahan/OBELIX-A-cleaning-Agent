@@ -47,3 +47,23 @@ def policy(obs,rng):
     lgt=q.squeeze(0).squeeze(0).numpy();
     act=int(np.argmax(lgt));
     return ACTIONS[act];
+
+
+
+
+###---------------------------------------for running  the agent------------------------
+from obelix import OBELIX   # import your environment
+import numpy as np
+
+if __name__ == "__main__":
+    env = OBELIX(scaling_factor=1)
+    obs = env.reset()
+
+    rng = np.random.default_rng()
+    done = False
+
+    while not done:
+        action = policy(obs, rng)
+        obs, reward, done = env.step(action)
+
+        print(f"Step: {env.current_step}, Reward: {reward}")
