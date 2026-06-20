@@ -1,69 +1,35 @@
 import os;import numpy as np;
-import torch;import torch.nn as nn;
-
-ACTIONS=("L45","L22","FW","R22","R45");
-_MODEL=None;hx=None;cx=None;
-
+ACTIONS=("L45","L22","FW","R22","R45");_MODEL=None;_STK=None;
 def _load_once():
-    global _MODEL;global hx;global cx;
-    if(_MODEL!=None):return;
-    s_dr=os.path.dirname(__file__);
-    
-    w1=os.path.join(s_dr,"weights.pth");
-    w2=os.path.join(s_dr,"drqn.pt");
-    w3=os.path.join(s_dr,"weights.pt");
-    
-    if(os.path.exists(w1)):wpt=w1;
-    else:
-        if(os.path.exists(w2)):wpt=w2;
-        else:wpt=w3;
-        
-    ins=18;outs=5;
-    
-    class DRQN(nn.Module):
-        def __init__(self):
-            super(DRQN,self).__init__();
-            self.lstm=nn.LSTM(ins,64,batch_first=True);
-            self.l1=nn.Linear(64,outs);
-        def forward(self,x,h,c):
-            v,(nh,nc)=self.lstm(x,(h,c));
-            q=self.l1(v);
-            return q,nh,nc;
-            
-    mdl=DRQN();
-    mdl.load_state_dict(torch.load(wpt,map_location="cpu"));
-    mdl.eval();_MODEL=mdl;
-    hx=torch.zeros(1,1,64);cx=torch.zeros(1,1,64);
-
-def policy(obs,rng):
-    global hx;global cx;
-    _load_once();
-    
-    x=torch.tensor(obs,dtype=torch.float32).view(1,1,18);
-    with torch.no_grad():
-        q,nhx,ncx=_MODEL(x,hx,cx);
-        
-    hx=nhx;cx=ncx;
-    lgt=q.squeeze(0).squeeze(0).numpy();
-    act=int(np.argmax(lgt));
-    return ACTIONS[act];
-
-
-
-
-###---------------------------------------for running  the agent------------------------
-from obelix import OBELIX   # import your environment
-import numpy as np
-
-if __name__ == "__main__":
-    env = OBELIX(scaling_factor=1)
-    obs = env.reset()
-
-    rng = np.random.default_rng()
-    done = False
-
-    while not done:
-        action = policy(obs, rng)
-        obs, reward, done = env.step(action)
-
-        print(f"Step: {env.current_step}, Reward: {reward}")
+ global _MODEL,_STK;
+ if(_MODEL is not None):return;
+ sd=os.path.dirname(__file__);wp=os.path.join(sd,"weights.pth");
+ import torch;import torch.nn as nn;
+ class Net(nn.Module):
+  def __init__(self):
+   super().__init__();self.f=nn.Sequential(nn.Linear(72,128),nn.ReLU(),nn.Linear(128,64),nn.ReLU(),nn.Linear(64,1),nn.Tanh());
+  def forward(self,x):return self.f(x);
+ m=Net();
+ s=torch.load(wp,map_location="cpu",weights_only=False);
+ if(type(s)==dict):
+  if("w_a" in s):m.load_state_dict(s["w_a"]);
+  else:m.load_state_dict(s);
+ else:m.load_state_dict(s);
+ m.eval();_MODEL=m;_STK=[];
+def policy(obs:np.ndarray,rng:np.random.Generator)->str:
+ _load_once();import torch;global _STK;
+ if(len(_STK)==0):
+  for i in range(4):_STK.append(obs);
+ else:
+  _STK.pop(0);_STK.append(obs);
+ so=np.concatenate(_STK);x=torch.from_numpy(so.astype(np.float32)).unsqueeze(0);
+ with torch.no_grad():a_c=_MODEL(x).item();
+ if(a_c<=-0.6):ai=0;
+ else:
+  if(a_c<=-0.2):ai=1;
+  else:
+   if(a_c<=0.2):ai=2;
+   else:
+    if(a_c<=0.6):ai=3;
+    else:ai=4;
+ return ACTIONS[ai];
